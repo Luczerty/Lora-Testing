@@ -59,3 +59,24 @@ If not, click on "Select other board", choose Heltec WiFi LoRa 32, and click OK.
 Finally, click on Upload.
 
 ![Board recognition Example](./doc/upload.png)
+
+## 🔐 License Problem (Heltec LoRa Board)
+
+If you encounter the following error:
+
+
+Please provide a correct license! For more information:
+http://www.heltec.cn/search/
+ESP32ChipID=XXXXXXXXXXX
+
+
+### ✅ Solution
+
+1. Go to the official Heltec license page:  
+   👉 [http://www.heltec.cn/search/](http://www.heltec.cn/search/)
+
+2. Enter your `ESP32ChipID` to retrieve your license key.
+
+3. Open the **Serial Monitor** in the Arduino IDE (baud: 115200).
+
+4. Send the following command in the Serial input, replacing with your actual license values:
