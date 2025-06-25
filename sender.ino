@@ -16,7 +16,7 @@ class LoRaConfig {
     uint8_t loraSpreadingFactor;
     uint8_t loraCodingRate;
 
-    LoRaConfig(uint32_t freq = 434220031, int8_t power = 22,
+    LoRaConfig(uint32_t freq = 434222222, int8_t power = 22,
                uint8_t bandwidth = 2, uint8_t spreadingFactor = 7, uint8_t codingRate = 1)
     {
       rfFrequency = freq;
