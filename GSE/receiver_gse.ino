@@ -1,100 +1,23 @@
-#include <Wire.h>
-#include "HT_SSD1306Wire.h"
-#include "LoRaWan_APP.h"
+#include <LoRaWan_APP.h>
 #include "Arduino.h"
+#include "HT_SSD1306Wire.h"
 
 #define Vext 21
-#define BUFFER_SIZE 30
 #define LOG_LINES 6
+#define MAX_LINE_LEN 21  // ≈ 128px / 6px par ligne OLED
 
-// OLED (déjà défini par Heltec si nécessaire)
 extern SSD1306Wire display;
 
-class LoRaConfig {
-  public:
-    uint32_t rfFrequency;
-    uint8_t loraBandwidth;
-    uint8_t loraSpreadingFactor;
-    uint8_t loraCodingRate;
-
-    LoRaConfig(uint32_t freq = 434000000, uint8_t bw = 0, uint8_t sf =9, uint8_t cr = 1) {
-      rfFrequency = freq;
-      loraBandwidth = bw;
-      loraSpreadingFactor = sf;
-      loraCodingRate = cr;
-    }
-
-    void printConfig() const {
-      Serial.println("=== LoRa RX Configuration ===");
-      Serial.print("Frequency: "); Serial.println(rfFrequency);
-      Serial.print("Bandwidth (0=125kHz, 1=250kHz, 2=500kHz): "); Serial.println(loraBandwidth);
-      Serial.print("Spreading Factor (7–12): "); Serial.println(loraSpreadingFactor);
-      Serial.print("Coding Rate (1=4/5 to 4=4/8): "); Serial.println(loraCodingRate);
-    }
-
-    void setFrequency(uint32_t freq) { rfFrequency = freq; }
-    void setBandwidth(uint8_t bw) { loraBandwidth = bw; }
-    void setSpreadingFactor(uint8_t sf) { loraSpreadingFactor = sf; }
-    void setCodingRate(uint8_t cr) { loraCodingRate = cr; }
-};
-
-LoRaConfig config;
-char rxpacket[BUFFER_SIZE];
+bool lora_idle = true;
 String logs[LOG_LINES];
-bool receivingEnabled = true;
+
+void OnTxDone();
+void OnTxTimeout();
+void logHexMultiline(const String& hex);
+void VextON();
+void display_init();
 
 static RadioEvents_t RadioEvents;
-void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr);
-
-void VextON() {
-  pinMode(Vext, OUTPUT);
-  digitalWrite(Vext, LOW);
-}
-
-void display_init() {
-  display.init();
-  display.setFont(ArialMT_Plain_10);
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.clear();
-  display.display();
-}
-
-void radio_setup() {
-  RadioEvents.RxDone = OnRxDone;
-  Radio.Init(&RadioEvents);
-
-  Radio.SetChannel(config.rfFrequency);
-
-  Radio.SetRxConfig(
-    MODEM_LORA,
-    config.loraBandwidth,
-    config.loraSpreadingFactor,
-    config.loraCodingRate,
-    0,
-    8,
-    0,
-    false,
-    0,
-    true,
-    false,
-    0,
-    false,
-    true
-  );
-
-  if (receivingEnabled) {
-    Radio.Rx(0);
-  }
-}
-
-void restartRadio() {
-  Serial.println("Restarting LoRa radio...");
-  Radio.Sleep();
-  delay(100);
-  receivingEnabled = true;
-  radio_setup();
-  Serial.println("LoRa radio restarted.");
-}
 
 void setup() {
   Serial.begin(115200);
@@ -107,114 +30,112 @@ void setup() {
 
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
-  Serial.println("=== LoRa Receiver Ready ===");
-  Serial.println("Commands:");
-  Serial.println("  set freq <Hz>");
-  Serial.println("  set bw <0-2>");
-  Serial.println("  set sf <7-12>");
-  Serial.println("  set cr <1-4>");
-  Serial.println("  pause / resume");
-  Serial.println("  show / restart");
+  RadioEvents.TxDone = OnTxDone;
+  RadioEvents.TxTimeout = OnTxTimeout;
+  Radio.Init(&RadioEvents);
 
-  config.printConfig();
-  radio_setup();
+  Radio.SetChannel(434000000);
+
+  Radio.SetTxConfig(
+    MODEM_LORA,
+    22,    // dBm
+    0,     // FSK deviation
+    0,     // Bandwidth 125 kHz
+    11,    // SF11 pour fiabilité
+    1,     // CR 4/5
+    8,     // Preamble length
+    false, false, false,
+    0, false, 3000
+  );
+
+  Radio.Rx(0);
 
   for (int i = 0; i < LOG_LINES; i++) logs[i] = "";
+  logHexMultiline("LoRa TX ready");
 }
 
 void loop() {
-  handleSerialCommand();
   Radio.IrqProcess();
+
+  if (Serial.available() && lora_idle) {
+    String msg = Serial.readStringUntil('\n');
+    msg.trim();
+
+    if (msg.length() > 0) {
+      // Allouer dynamiquement le buffer
+      uint8_t* txpacket = (uint8_t*)malloc(msg.length());
+      if (txpacket == nullptr) {
+        Serial.println("[ERROR] Allocation failed");
+        return;
+      }
+
+      for (unsigned int i = 0; i < msg.length(); i++) {
+        txpacket[i] = (uint8_t)msg[i];
+      }
+
+      Radio.Send(txpacket, msg.length());
+      lora_idle = false;
+
+      // Log hex
+      String hexMsg = "";
+      for (unsigned int i = 0; i < msg.length(); i++) {
+        if (txpacket[i] < 0x10) hexMsg += "0";
+        hexMsg += String(txpacket[i], HEX);
+      }
+      hexMsg.toUpperCase();
+      logHexMultiline("TX: " + hexMsg);
+
+      free(txpacket);
+    }
+  }
+
   delay(10);
 }
 
-void logMessage(String msg) {
-  for (int i = 0; i < LOG_LINES - 1; i++) logs[i] = logs[i + 1];
-  logs[LOG_LINES - 1] = msg;
+void OnTxDone() {
+  logHexMultiline("TX done.");
+  lora_idle = true;
+  Radio.Rx(0);
+}
+
+void OnTxTimeout() {
+  logHexMultiline("TX timeout.");
+  lora_idle = true;
+  Radio.Rx(0);
+}
+
+void logHexMultiline(const String& full) {
+  Serial.println("[LOG] " + full);
+
+  int start = 0;
+  while (start < full.length()) {
+    String line = full.substring(start, start + MAX_LINE_LEN);
+
+    for (int i = 0; i < LOG_LINES - 1; i++) {
+      logs[i] = logs[i + 1];
+    }
+    logs[LOG_LINES - 1] = line;
+    start += MAX_LINE_LEN;
+  }
 
   display.clear();
+  display.setFont(ArialMT_Plain_10);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
   for (int i = 0; i < LOG_LINES; i++) {
     display.drawString(0, i * 10, logs[i]);
   }
   display.display();
-  Serial.println(msg);
-
 }
 
-void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
-  if (!receivingEnabled) return;
-
-    //Serial.write(payload, size);
-
-  memcpy(rxpacket, payload, size);
-  rxpacket[size] = '\0';
-
-  String msg = String(rxpacket);
-  String logEntry = msg + " RSI " + String(rssi) + " SN " + String(snr) ;
-  logMessage(logEntry);
-
-
-  Radio.Rx(0); // Restart RX mode
+void VextON() {
+  pinMode(Vext, OUTPUT);
+  digitalWrite(Vext, LOW);
 }
 
-void handleSerialCommand() {
-  if (!Serial.available()) return;
-
-  String input = Serial.readStringUntil('\n');
-  input.trim();
-  input.toLowerCase();
-
-  if (input.startsWith("set")) {
-    int firstSpace = input.indexOf(' ');
-    int secondSpace = input.indexOf(' ', firstSpace + 1);
-    if (firstSpace == -1 || secondSpace == -1) {
-      Serial.println("Invalid format: set <param> <value>");
-      return;
-    }
-
-    String param = input.substring(firstSpace + 1, secondSpace);
-    String valueStr = input.substring(secondSpace + 1);
-    uint32_t value = valueStr.toInt();
-
-    if (param == "freq") {
-      config.setFrequency(value);
-      Serial.println("Frequency updated.");
-    } else if (param == "bw" && value <= 2) {
-      config.setBandwidth((uint8_t)value);
-      Serial.println("Bandwidth updated.");
-    } else if (param == "sf" && value >= 7 && value <= 12) {
-      config.setSpreadingFactor((uint8_t)value);
-      Serial.println("Spreading Factor updated.");
-    } else if (param == "cr" && value >= 1 && value <= 4) {
-      config.setCodingRate((uint8_t)value);
-      Serial.println("Coding Rate updated.");
-    } else {
-      Serial.println("Unknown parameter or invalid value.");
-      return;
-    }
-
-    radio_setup();
-
-  } else if (input == "show") {
-    config.printConfig();
-
-  } else if (input == "pause") {
-    receivingEnabled = false;
-    Radio.Sleep();
-    Serial.println("Reception paused.");
-
-  } else if (input == "resume") {
-    if (!receivingEnabled) {
-      receivingEnabled = true;
-      Radio.Rx(0);
-      Serial.println("Reception resumed.");
-
-    }
-
-  } else if (input == "restart") {
-    restartRadio();
-
-  } else {
-    Serial.println("Unknown command. Use: set / show / pause / resume / restart");
-  }
+void display_init() {
+  display.init();
+  display.setFont(ArialMT_Plain_10);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.clear();
+  display.display();
 }
