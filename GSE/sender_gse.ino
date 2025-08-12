@@ -41,7 +41,7 @@ void setup() {
     22,    // dBm
     0,     // FSK deviation
     0,     // Bandwidth 125 kHz
-    11,    // SF11 pour fiabilité
+    9,    // SF11 pour fiabilité
     1,     // CR 4/5
     8,     // Preamble length
     false, false, false,

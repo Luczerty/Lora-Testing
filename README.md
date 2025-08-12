@@ -1,3 +1,36 @@
+# 📁 What You Will Find in This Repository
+
+## 📌 Summary
+
+1. A guide to install and configure TinyGS, including a setup example for the Heltec LoRa 32 V3.
+2. A script to send and receive messages for radio range testing.
+3. A script for the ground station to communicate with Coconut using the Heltec LoRa 32 V3.
+4. An updated version of `thebridge.py` with a debug option.
+5.  A guide to flash the scripts on  the Heltec LoRa 32 V3.
+
+---
+
+## 📄 Documentation Locations
+
+- 🛠️ **TinyGS Installation and Configuration Guide**  
+  → [`./installingandconfiguringTinyGS.md`](./installingandconfiguringTinyGS.md)
+
+- 📡 **Radio Range Testing Script**  
+  → [`./other_scripts/README.md`](./other_scripts/README.md)
+
+- 🛰️ **Ground Station Scripts (Coconut Communication)**  
+  → [`./GSE/README.md`](./GSE/README.md)
+
+- 🧩 **New Version of `thebridge.py` with Debug Option**  
+  → [`./new_bridge/README.md`](./new_bridge/README.md)
+
+-  **LoRa radio Range Test Report**  
+  → ['Lora range test report](https://docs.google.com/document/d/1vxGPzcisJnAlRVnOyCcJEj1ERbSNojEU1-XNJQtcNaU/edit?mode=html&tab=t.0)
+
+-  **The guide to install a script***  
+  → 🔽 See below for instructions
+
+
 # 📥 Installing the Arduino IDE and Importing Sketches from GitHub
 
 This guide explains how to:

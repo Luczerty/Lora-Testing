@@ -5,7 +5,7 @@
 extern SSD1306Wire display;
 
 #define Vext 21
-#define BUFFER_SIZE 30
+#define BUFFER_SIZE 64
 #define LOG_LINES 6
 
 class LoRaConfig {
@@ -16,15 +16,10 @@ class LoRaConfig {
     uint8_t loraSpreadingFactor;
     uint8_t loraCodingRate;
 
-    LoRaConfig(uint32_t freq = 434222222, int8_t power = 22,
-               uint8_t bandwidth = 2, uint8_t spreadingFactor = 7, uint8_t codingRate = 1)
-    {
-      rfFrequency = freq;
-      txOutputPower = power;
-      loraBandwidth = bandwidth;
-      loraSpreadingFactor = spreadingFactor;
-      loraCodingRate = codingRate;
-    }
+    LoRaConfig(uint32_t freq = 434000000, int8_t power = 22,
+               uint8_t bandwidth = 0, uint8_t spreadingFactor = 7, uint8_t codingRate = 1)
+      : rfFrequency(freq), txOutputPower(power), loraBandwidth(bandwidth),
+        loraSpreadingFactor(spreadingFactor), loraCodingRate(codingRate) {}
 
     void printConfig() const {
       Serial.println("=== LoRa Configuration ===");
@@ -47,6 +42,7 @@ char txpacket[BUFFER_SIZE];
 bool lora_idle = true;
 int n = 0;
 String logs[LOG_LINES];
+String lastSentMessage = "";
 bool sendEnabled = true;
 
 #define LORA_PREAMBLE_LENGTH 8
@@ -74,8 +70,6 @@ void radio_setup() {
   RadioEvents.TxDone = OnTxDone;
   RadioEvents.TxTimeout = OnTxTimeout;
   Radio.Init(&RadioEvents);
-
-  Radio.SetPublicNetwork(true);  
 
   Radio.SetChannel(config.rfFrequency);
   Radio.SetTxConfig(
@@ -106,7 +100,7 @@ void restartRadio() {
 
 void logMessage(String msg) {
   for (int i = 0; i < LOG_LINES - 1; i++) logs[i] = logs[i + 1];
-  logs[LOG_LINES - 1] = "Sent: " + msg;
+  logs[LOG_LINES - 1] = msg;
 
   display.clear();
   for (int i = 0; i < LOG_LINES; i++) {
@@ -114,12 +108,13 @@ void logMessage(String msg) {
   }
   display.display();
 
-  Serial.println("Sent: " + msg);
+  Serial.println(msg);
 }
 
 void OnTxDone() {
   Serial.println("Message sent successfully.");
   lora_idle = true;
+  logMessage("Sent: " + lastSentMessage);
 }
 
 void OnTxTimeout() {
@@ -186,20 +181,16 @@ void handleSerialCommand() {
     lora_idle = true;
   } else if (input == "show") {
     config.printConfig();
-
   } else if (input == "pause") {
     sendEnabled = false;
     Serial.println("Transmission paused.");
-
   } else if (input == "resume") {
     sendEnabled = true;
     Serial.println("Transmission resumed.");
-
   } else if (input == "restart") {
     sendEnabled = false;
     restartRadio();
     sendEnabled = true;
-
   } else {
     Serial.println("Unknown command. Use: set / show / pause / resume / restart");
   }
@@ -214,7 +205,7 @@ void setup() {
   display_init();
   delay(100);
 
-  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
   Serial.println("=== LoRa Serial Control Ready ===");
   Serial.println("Available commands:");
@@ -223,9 +214,7 @@ void setup() {
   Serial.println("  set bw <0-2>");
   Serial.println("  set sf <7-12>");
   Serial.println("  set cr <1-4>");
-  Serial.println("  show");
-  Serial.println("  pause / resume");
-  Serial.println("  restart");
+  Serial.println("  show / pause / resume / restart");
 
   config.printConfig();
   radio_setup();
@@ -234,16 +223,16 @@ void setup() {
 }
 
 void loop() {
-  handleSerialCommand();
+  handleSerialCommand();  // ← Décommenté pour prendre les commandes
+  Radio.IrqProcess();
 
   if (lora_idle && sendEnabled) {
     String message = "Test";
-    String full_message = message + " " + String(n++);
-    full_message.toCharArray(txpacket, BUFFER_SIZE);
-    logMessage(full_message);
+    lastSentMessage = message + " " + String(n++);
+    lastSentMessage.toCharArray(txpacket, BUFFER_SIZE);
+    Radio.Send((uint8_t *)txpacket, strlen(txpacket));
+    lora_idle = false;
   }
 
-  Radio.IrqProcess();
   delay(3000);
 }
-

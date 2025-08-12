@@ -25,7 +25,7 @@ public:
   uint8_t loraSpreadingFactor;
   uint8_t loraCodingRate;
 
-  LoRaConfig(uint32_t freq = 434000000, uint8_t bw = 0, uint8_t sf = 11, uint8_t cr = 1)
+  LoRaConfig(uint32_t freq = 434000000, uint8_t bw = 0, uint8_t sf = 9, uint8_t cr = 1)
       : rfFrequency(freq), loraBandwidth(bw), loraSpreadingFactor(sf), loraCodingRate(cr) {}
 };
 
